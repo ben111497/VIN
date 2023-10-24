@@ -1,0 +1,6 @@
+version: 2
+authToken: 2XCK7OTvLeWR92jQEZjSUalf9vk_4b8qeaexwBn4F7k5XFDSz
+tunnels:
+    vin:
+        proto: http
+        addr: 80

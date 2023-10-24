@@ -28,6 +28,18 @@ const db = new sqlite3.Database('MMY_US_listC_V0.6_231013.db', (err) => {
   }
 });
 
+app.get('/ip', async (req, res) => {
+  try {
+    const ngrokUrl = await ngrok.connect({
+      addr: port,
+    });
+    res.json({ ngrokIP: ngrokUrl });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Failed to retrieve NGROK IP' });
+  }
+});
+
 app.use('/vin', express.static(path.join(__dirname, 'public')));
 
 app.post('/exec', (req, res) => {
