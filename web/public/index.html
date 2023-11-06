@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>VIN</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        #input {
+            width: 100%;
+        }
+    
+        #Vins {
+            width: 250px;
+        }
+    
+
+        .pagination {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .pagination button {
+            margin: 0 5px;
+        }
+
+        #prevButton, #nextButton {
+            display: none;
+        }
+
+        table {
+            border: 1px solid grey;
+            margin: 10px;
+        }
+
+        td {
+            border: 1px solid grey;
+            margin: 5px;
+            padding: 5px 10px;
+        }
+        
+        th {
+            border: 1px solid grey;
+            margin: 5px;
+            padding: 5px 10px;
+        }
+
+        #YearFilterButton, #useMMY {
+            margin: 15px 5px;
+            padding: 3px;
+        }
+    </style>
+</head>
+<body>
+    <h1>VIN 測試</h1>
+
+    <form id="inputForm">
+        <label for="Vins">VINs：</label>
+        <input type="text" id="Vins" name="Vins" required>
+
+        <input type="submit" value="送出">
+    </form>
+    <button id="useMMY" onclick="useMMY()">MMY On</button>
+    <button id="YearFilterButton" onclick="YearFilterButton()">Year Filter Off</button>
+
+    <div id="result"></div>
+    <div id="loading" style="display: none;">處理中...</div>
+    <table id="carTable">
+        <thead>
+            <tr>
+                <th>VIN</th>
+                <th>Make</th>
+                <th>Model</th>
+                <th>Series</th>
+                <th>Series2</th>
+                <th>Year</th>
+                <th>MMY</th>
+            </tr>
+        </thead>
+        <tbody>
+            
+        </tbody>
+    </table>
+</body>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script>
+    const apiUrl = 'https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVINValuesBatch/';
+    let localhost = 'http://localhost:8081'
+    let yearFilter = false;
+    let hasUseMMY = true;
+    let resDataList = [];
+    let VINList = []
+    const pageDataCount = 100;
+
+    // async function getIp() {
+    //     try {
+    //         const response = await fetch(apiUrl, {
+    //             method: 'get',
+    //         });
+
+    //         if (!response.ok) {
+    //             throw new Error('Network response was not ok');
+    //         }
+
+    //         const result = await response.json();
+    //         console.log(`ip: ${result.ip}`)
+    //         localhost = result.ip
+    //     } catch (error) {
+    //         console.error(error);
+    //         throw error;
+    //     }
+    // }
+    // getIp();
+
+    //點送出
+    document.getElementById("inputForm").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        const inputText = document.getElementById("Vins").value;
+        VINList = []
+        const mergedString = dataProcess(inputText);
+
+        document.getElementById("loading").style.display = "block";
+        resDataList = []
+        const table = document.getElementById("carTable");
+        const rowCount = table.rows.length;
+        for (let i = rowCount - 1; i > 0; i--) {
+            table.deleteRow(i);
+        }
+
+        for (let i = 0; i < mergedString.length; i++) {
+            try {
+                const item = await post(mergedString[i]);
+                const req = []
+                for (let k = 0;k < item.length; k++) {
+                    var make = item[k].Make
+                    if (make === undefined || make === "") make = "undefinded"
+                    var model = ""
+                    if (item[k].Model !== "") {
+                        model += `\`Model\` LIKE '${item[k].Model}'`
+                    }
+                    if (item[k].Series !== "") {
+                        if (model !== "") model += " or "
+                        model += `\`Model\` LIKE '${item[k].Series}'`
+                    }
+                    if (item[k].Series2 !== "") {
+                        if (model !== "") model += " or "
+                        model += `\`Model\` LIKE '${item[k].Series2}'`
+                    }
+                    if (model !== "") {
+                        model = `and (${model})`
+                    } else {
+                        model = "and \`Model\` = 'undefined'"
+                    }
+                    req.push({vin: item[k].VIN, sql: `select \`Make\`,\`Model\`,\`Year\` from \`Summary table\` where \`Make\` LIKE '${make}' ${model}`})
+                }
+
+                let mmy = []
+                if (hasUseMMY) { mmy = await getMMY({data: req}) }
+
+                for (let j = 0; j < item.length; j++) {
+                    resDataList.push({
+                        VIN: VINList[j],
+                        Make: item[j].Make,
+                        Model: item[j].Model,
+                        ModelYear: item[j].ModelYear,
+                        Series: item[j].Series,
+                        Series2: item[j].Series2,
+                        MMY: mmy.filter(it => it.vin === VINList[j])
+                    });
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        document.getElementById("loading").style.display = "none";
+        setPage(0)
+
+        console.log(`final result: ${JSON.stringify(resDataList)}`);
+    });
+
+    // 輸入資料處理成 US VIN API需要格式
+    function dataProcess(inputString) {
+        const inputArray = inputString.split(',').map(item => item.trim());
+        VINList = inputArray
+        let mergedString = [];
+        for (let i = 0; i < inputArray.length; i += 50) {
+            const group = inputArray.slice(i, i + 50);
+            const groupString = group.join(';');
+            mergedString.push(groupString.toString());
+        }
+        console.log(mergedString);
+        return mergedString;
+    }
+
+    // US VIN API
+    async function post(list) {
+        const data = {
+            format: "json",
+            data: list + ""
+        };
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams(data).toString()
+            });
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            const result = await response.json();
+            return result.Results;
+        } catch (error) {
+            console.error(error);
+            throw error;
+        }
+    }
+
+    // 獲得 US MMY
+    async function getMMY(list) {
+        try {
+            console.log("getMMY" + JSON.stringify(list))
+            const response = await fetch(`${localhost}/query`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(list)
+            });
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            const result = await response.json();
+            return result.data;
+        } catch (error) {
+            console.error(error);
+            result = []
+            for (let i = 0; i < list.data.length; i++) {
+                result.push({vin: list.data[i].vin, data: []})
+            }
+            return result
+        }
+    }
+
+    // 設定容器
+    function setPage(page) {
+        const carTable = document.getElementById("carTable");
+        const tbody = carTable.querySelector("tbody");
+
+        for (let i = 0;i < resDataList.length; i++) {
+            tbody.appendChild(toRow(resDataList[i]));
+        }
+    }
+
+    //表格填入
+    function toRow(data) {
+        const row = document.createElement("tr");
+
+        const vinCell = document.createElement("td");
+        vinCell.textContent = data.VIN;
+        const makeCell = document.createElement("td");
+        makeCell.textContent = data.Make;
+        const modelCell = document.createElement("td");
+        modelCell.textContent = data.Model;
+        const seriesCell = document.createElement("td");
+        seriesCell.textContent = data.Series;
+        const series2Cell = document.createElement("td");
+        series2Cell.textContent = data.Series2;
+        const yearCell = document.createElement("td");
+        yearCell.textContent = data.ModelYear;
+        const MMYCell = document.createElement("td");
+        MMYCell.appendChild(MMYTable(data.MMY, data.ModelYear));
+
+        row.appendChild(vinCell);
+        row.appendChild(makeCell);
+        row.appendChild(modelCell);
+        row.appendChild(seriesCell);
+        row.appendChild(series2Cell);
+        row.appendChild(yearCell);
+        row.appendChild(MMYCell);
+        
+        row.style.marginTop = "5px";
+        row.style.marginBottom = "5px";
+        row.style.marginLeft = "10px";
+        row.style.marginRight = "10px";
+
+        if (data.Make === "" || (data.Model === "" && data.Series === "" && data.Series2 === "")) {
+            row.style.backgroundColor = "#DCDCDC";
+        }
+
+        return row
+    }
+
+    // MMY表格
+    function MMYTable(row, year) {
+        if (row.length === 0) { return document.createElement('table'); }
+        if (row[0].data.length === 0) { return document.createElement('table'); }
+        let data = row[0].data
+
+        if (year !== undefined && yearFilter) {
+            data = row[0].data.filter(it => { let start, end;
+                if (it.Year.includes("->")) {
+                    const sp = it.Year.split("->");
+                    start = (sp[0].replace(/[^0-9.]/g, '').substring(0, 4) || "0");
+                    end = (sp[1].replace(/[^0-9.]/g, '').substring(0, 4) || "9999");
+                } else if (it.Year.includes("-")) {
+                    const sp = it.Year.split("-");
+                    start = (sp[0].replace(/[^0-9.]/g, '').substring(0, 4) || "0");
+                    end = (sp[1].replace(/[^0-9.]/g, '').substring(0, 4) || "9999");
+                } else {
+                    start = it.Year;
+                    end = it.Year;
+                }
+
+                return(year >= parseInt(start) && year <= parseInt(end));
+            });
+        }
+
+        const table = document.createElement('table');
+        table.border = '1'; 
+
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        const headers = ['Make', 'Model', 'Year'];
+
+        headers.forEach(headerText => {
+            const th = document.createElement('th');
+            th.textContent = headerText;
+            headerRow.appendChild(th);
+        });
+
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+
+        data.forEach(info => {
+            const row = document.createElement('tr');
+
+            const makeCell = document.createElement('td');
+            makeCell.textContent = info.Make;
+            const modelCell = document.createElement('td');
+            modelCell.textContent = info.Model;
+            const yearCell = document.createElement('td');
+            yearCell.textContent = info.Year;
+
+            row.appendChild(makeCell);
+            row.appendChild(modelCell);
+            row.appendChild(yearCell);
+            tbody.appendChild(row);
+        });
+
+        table.appendChild(tbody);
+        return table
+    }
+
+    //切換 Year篩選
+    function useMMY() {
+        var button = document.getElementById("useMMY");
+        
+        if (button.textContent === "MMY On") {
+            button.textContent = "MMY Off";
+            hasUseMMY = false
+        } else {
+            button.textContent = "MMY On";
+            hasUseMMY = true
+        }
+    }
+
+    //切換 Year篩選
+    function YearFilterButton() {
+        var button = document.getElementById("YearFilterButton");
+        
+        if (button.textContent === "Year Filter On") {
+            button.textContent = "Year Filter Off";
+            yearFilter = false
+        } else {
+            button.textContent = "Year Filter On";
+            yearFilter = true
+        }
+
+        const table = document.getElementById("carTable");
+        const rowCount = table.rows.length;
+        for (let i = rowCount - 1; i > 0; i--) {
+            table.deleteRow(i);
+        }
+        setPage(0)
+    }
+
+
+    //換頁 暫時沒用
+    function setPageButton(display1, display2) {
+        const prevButton = document.getElementById("prevButton");
+        const nextButton = document.getElementById("nextButton");
+
+        if (display1) {
+            prevButton.style.display = "block"
+        } else {
+            prevButton.style.display = "none"
+        }
+        
+        if (display2) {
+            nextButton.style.display = "block"
+        } else {
+            nextButton.style.display = "none"
+        }
+    }
+</script>
+</html>
