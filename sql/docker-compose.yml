@@ -1,0 +1,13 @@
+version: '1'
+services:
+  web:
+    build: .
+    ports:
+      - "8083:8083"
+    depends_on:
+      - db
+  db:
+    image: mysql:latest
+    environment:
+      MYSQL_ROOT_PASSWORD: 11141017
+      MYSQL_DATABASE: ysDB

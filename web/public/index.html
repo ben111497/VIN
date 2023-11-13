@@ -85,7 +85,7 @@
 <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 <script>
     const apiUrl = 'https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVINValuesBatch/';
-    let localhost = 'http://localhost:8081'
+    let localhost = 'https://vin-server-6egci5iyea-uc.a.run.app'
     let yearFilter = false;
     let hasUseMMY = true;
     let resDataList = [];
@@ -136,15 +136,15 @@
                     if (make === undefined || make === "") make = "undefinded"
                     var model = ""
                     if (item[k].Model !== "") {
-                        model += `\`Model\` LIKE '${item[k].Model}'`
+                        model += `\`Model\` LIKE '%${item[k].Model}%'`
                     }
                     if (item[k].Series !== "") {
                         if (model !== "") model += " or "
-                        model += `\`Model\` LIKE '${item[k].Series}'`
+                        model += `\`Model\` LIKE '%${item[k].Series}%'`
                     }
                     if (item[k].Series2 !== "") {
                         if (model !== "") model += " or "
-                        model += `\`Model\` LIKE '${item[k].Series2}'`
+                        model += `\`Model\` LIKE '%${item[k].Series2}%'`
                     }
                     if (model !== "") {
                         model = `and (${model})`

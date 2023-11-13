@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+  <title>VIN_Model</title>
+  <style>
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    th, td {
+      border: 1px solid #dddddd;
+      text-align: left;
+      padding: 8px;
+    }
+
+    th {
+      background-color: #f2f2f2;
+    }
+
+    .cButton {
+        display: flex;
+        justify-content: center;
+        margin: 10px;
+    }
+
+    .pagination-button {
+        padding: 5px;
+        width: 100px;
+        text-align: center;
+        background-color: #ebebeb;
+        border: 1px solid #6b6b6b;
+        border-radius: 10px;
+        cursor: pointer;
+        margin-right: 50px;
+    }
+
+    .pagination-button:hover {
+        background-color: #727272c4;
+    }
+  </style>
+</head>
+<body>
+
+<div style="margin: 10px 0;">
+    <input type="text" id="make" placeholder="Enter Make">
+    <input type="text" id="model" placeholder="Enter Model">
+    <button id="SearchButton">Search</button>
+    <p id="count"></p>
+</div>
+
+<table id="myTable">
+  <thead>
+    <tr>
+      <th>Make</th>
+      <th>Model</th>
+      <th>Year</th>
+    </tr>
+  </thead>
+  <tbody id="tableBody">
+    <!-- Table rows will be added dynamically using JavaScript -->
+  </tbody>
+</table>
+<div class="cButton">
+    <button class="pagination-button" id="previous" style="display: none;">Previous</button>
+    <button class="pagination-button" id="next">Next</button>
+</div>
+  
+
+<script>
+    let dataList = [];
+    let currentDataList = [];
+    let currentPage = 1;
+    let totalPages = 1;
+    const recordsPerPage = 1000;
+    const pervious = document.getElementById("previous")
+    const next = document.getElementById("next")
+
+    fetch('/public/og_mmy.json')
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        dataList = data;
+        currentDataList = dataList
+        totalPages = Math.ceil(currentDataList.length / recordsPerPage)
+        $('#count').text(`totalCount: ${currentDataList.length}`);
+        console.log(`currentDataList.length: ${currentDataList.length}\ntotalPages: ${totalPages}`)
+        displayPage(currentPage);
+    })
+    .catch(error => console.error('錯誤:', error));
+
+    /**
+     * 設定監聽事件
+     */
+    document.getElementById("SearchButton").addEventListener("click", function () {
+        var make = document.getElementById("make").value.toLowerCase();
+        var model = document.getElementById("model").value.toLowerCase();
+        currentDataList = dataList.filter(item => {
+            let jMake = item.Make.toLowerCase().includes(make)
+            let jModel = item.Model.toLowerCase().includes(model)
+            if (make === "") { jMake = true }
+            if (model === "") { jModel = true }
+            return (jMake && jModel);
+        });
+
+        totalPages = Math.ceil(currentDataList.length / recordsPerPage)
+        $('#count').text(`totalCount: ${currentDataList.length}`);
+        console.log(`currentDataList.length: ${currentDataList.length}\ntotalPages: ${totalPages}`)
+        currentPage = 1;
+        displayPage(currentPage);
+    });
+
+    document.getElementById("previous").addEventListener("click", function () {
+        console.log(`currentPage: ${currentPage}\ntotalPages: ${totalPages}`)
+        if (currentPage > 1) {
+            currentPage--;
+            displayPage(currentPage);
+        }
+    });
+
+    document.getElementById("next").addEventListener("click", function () {
+        console.log(`currentPage: ${currentPage}\ntotalPages: ${totalPages}`)
+        if (currentPage < totalPages) {
+            currentPage++;
+            displayPage(currentPage);
+        }
+    });
+
+    /**
+     * Function
+     */
+    function displayPage(pageNumber) {
+        var tableBody = document.getElementById("tableBody");
+        tableBody.innerHTML = "";
+
+        var startIndex = (pageNumber - 1) * recordsPerPage;
+        var endIndex = startIndex + recordsPerPage;
+        var pageData = currentDataList.slice(startIndex, endIndex);
+
+        for (var i = 0; i < pageData.length; i++) {
+            var row = tableBody.insertRow(i);
+
+            var cell1 = row.insertCell(0);
+            var cell2 = row.insertCell(1);
+            var cell3 = row.insertCell(2);
+
+            cell1.innerHTML = pageData[i].Make;
+            cell2.innerHTML = pageData[i].Model;
+            cell3.innerHTML = pageData[i].Year;
+        }
+
+        document.body.scrollTop = 0;
+        document.documentElement.scrollTop = 0;
+        setPageBottom()
+    }
+
+    function setPageBottom() {
+      console.log(`currentPage: ${currentPage}\ntotalPages: ${totalPages}`)
+        if (currentPage === 1) {
+          pervious.style.display = "none"
+        } else {
+          pervious.style.display = "block"
+        }
+
+        if (currentPage < totalPages) {
+          next.style.display = "block"
+        } else {
+          next.style.display = "none"
+        }
+    }
+</script>
+
+</body>
+</html>
