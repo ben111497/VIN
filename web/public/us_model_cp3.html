@@ -57,7 +57,10 @@
   </style>
 </head>
 <body>
-
+<h3>比較方法：將 US_API資料的 Model 直接與 OG Model資料進行比對，取相似度最高者</h3>
+<p>說明<br>1. 列出所有 US_API Model 或篩選出相關資料<br>2.以 US_API Make查找 OG的相關 Model<br>
+  3.遍歷所有 Model，將所有 Model直接與 US_API Model做相似度百分比，取最相近者
+</p>
 <div style="margin: 10px 0;">
     <input type="text" id="make" placeholder="Enter Make">
     <input type="text" id="model" placeholder="Enter Model">
@@ -75,7 +78,7 @@
       <th>Make</th>
       <th>Model</th>
       <th>Year</th>
-      <th>Search</th>
+      <th>OG_MMY_Closest</th>
     </tr>
   </thead>
   <tbody id="tableBody">
@@ -204,20 +207,8 @@
           cell3.innerHTML = pageData[i].ModelID;
           cell4.innerHTML = pageData[i].Make;
           cell5.innerHTML = pageData[i].Model;
-          cell6.innerHTML = pageData[i].Year;
-                     
-          var createButton = function (index) {
-            var button = document.createElement("button");
-            button.innerHTML = "Search";
-            button.value = startIndex + index;  // 使用 index 而不是 i
-            button.onclick = function () {
-                console.log(`startIndex 0: ${startIndex + index}`)
-                filterOG(button.value);
-            };
-            return button;
-        };
-
-        cell7.appendChild(createButton(i));
+          cell6.innerHTML = pageData[i].Year;      
+          cell7.appendChild(filterOG(startIndex + i));
       }
 
       document.body.scrollTop = 0;
@@ -229,9 +220,9 @@
     let item = currentDataList[index]
     let list = ogMmyList.filter(it => {
       if (it.Make !== "" && it.Model !== "") {
-        return it.Make.toLowerCase() === item.Make.toLowerCase() && it.Model.toLowerCase() === item.Model.toLowerCase();
+        return it.Make.toLowerCase() === item.Make.toLowerCase();
       } else {
-          return false;  // 或者根据需要处理这种情况
+        return false;
       }
     });
   
@@ -253,9 +244,116 @@
       return(item.Year >= parseInt(start) && item.Year <= parseInt(end));
     });
 
-    openTablePopup(data)
+    if (data.length === 0) {
+      return document.createElement('table')
+    } else {
+      return closest(data, item)
+    }
   }
 
+  // 相似度最近的 (時間必判斷)
+  function closest(data, select) {
+        const table = document.createElement('table');
+        table.border = '1'; 
+
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        const headers = ['Make', 'Model', 'Year', 'Percent'];
+
+        headers.forEach(headerText => {
+            const th = document.createElement('th');
+            th.textContent = headerText;
+            headerRow.appendChild(th);
+        });
+
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+
+        // 最終選項可能有多個(若最高百分比相同)
+        let maxValue = [] //{pr: 0, value: undefined}
+        console.log("data closest")
+        console.log(data)
+        for (let k = 0; k < data.length; k++) {
+            let item = {pr: 0, value: data[k]}
+            item.pr = Math.max(levenshteinDistance(data[k].Model, select.Model))
+
+            if (item.pr === 0) continue;
+            if (maxValue.length === 0) {
+                maxValue.push(item)
+            } else if (item.pr > maxValue[0].pr) {
+                maxValue = []
+                maxValue.push(item)
+            } else if (item.pr === maxValue[0].pr) {
+                maxValue.push(item)
+            }
+        }
+
+        for (let j = 0; j < maxValue.length; j++) {
+            const row2 = document.createElement('tr');
+
+            const makeCell = document.createElement('td');
+            makeCell.textContent = maxValue[j].value.Make;
+            const modelCell = document.createElement('td');
+            modelCell.textContent = maxValue[j].value.Model;
+            const yearCell = document.createElement('td');
+            yearCell.textContent = maxValue[j].value.Year;
+            const percentCell = document.createElement('td');
+            percentCell.textContent = maxValue[j].pr + "%";
+
+            row2.appendChild(makeCell);
+            row2.appendChild(modelCell);
+            row2.appendChild(yearCell);
+            row2.appendChild(percentCell);
+            tbody.appendChild(row2);
+        }
+        
+        table.appendChild(tbody);
+        return table
+    }
+
+    // 字串相似度百分比
+    function levenshteinDistance(t1, t2) {
+      let str1 = t1.toLowerCase()
+      let str2 = t2.toLowerCase()
+      if (str1 === undefined || str1 === "") return 0
+      if (str2 === undefined || str2 === "") return 0
+      const len1 = str1.length;
+      const len2 = str2.length;
+
+      const matrix = [];
+
+      // 初始化矩陣
+      for (let i = 0; i <= len1; i++) {
+          matrix[i] = [i];
+      }
+
+      for (let j = 0; j <= len2; j++) {
+          matrix[0][j] = j;
+      }
+
+      // 填充矩陣
+      for (let i = 1; i <= len1; i++) {
+          for (let j = 1; j <= len2; j++) {
+              const cost = str1.charAt(i - 1) === str2.charAt(j - 1) ? 0 : 1;
+              matrix[i][j] = Math.min(
+                  matrix[i - 1][j] + 1,      // 刪除
+                  matrix[i][j - 1] + 1,      // 插入
+                  matrix[i - 1][j - 1] + cost // 替換
+              );
+          }
+      }
+
+      const maxLen = Math.max(len1, len2);
+      const distance = matrix[len1][len2];
+      const similarityPercentage = ((maxLen - distance) / maxLen) * 100;
+
+      console.log(`str1: ${str1}\nstr2: ${str2}\npercent: ${similarityPercentage.toFixed(2)}`)
+      return similarityPercentage.toFixed(2);
+    }
+
+  // DIALOG
   function openTablePopup(data) {
     if (data.length === 0) {
       var noDataElement = document.createElement("p");

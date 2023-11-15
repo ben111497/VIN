@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>VIN</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        #input {
+            width: 100%;
+        }
+    
+        #Vins {
+            width: 250px;
+        }
+    
+        .pagination {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .pagination button {
+            margin: 0 5px;
+        }
+
+        #prevButton, #nextButton {
+            display: none;
+        }
+
+        table {
+            border: 1px solid grey;
+            margin: 10px;
+        }
+
+        td {
+            border: 1px solid grey;
+            margin: 5px;
+            padding: 5px 10px;
+        }
+        
+        th {
+            border: 1px solid grey;
+            margin: 5px;
+            padding: 5px 10px;
+        }
+
+        #YearFilterButton, #useMMY {
+            margin: 15px 5px;
+            padding: 3px;
+        }
+    </style>
+</head>
+<body>
+    <h1>VIN 測試</h1>
+
+    <form id="inputForm">
+        <label for="Vins">VINs：</label>
+        <input type="text" id="Vins" name="Vins" required>
+
+        <input type="submit" value="送出">
+    </form>
+    <button id="useMMY" onclick="useMMY()">MMY On</button>
+    <button id="YearFilterButton" onclick="YearFilterButton()">Year Filter Off</button>
+
+    <div id="result"></div>
+    <div id="loading" style="display: none;">處理中...</div>
+    <table id="carTable">
+        <thead>
+            <tr>
+                <th>VIN</th>
+                <th>Make</th>
+                <th>Model</th>
+                <th>Series</th>
+                <th>Series2</th>
+                <th>Year</th>
+                <th>MMY</th>
+                <th>Closest</th>
+            </tr>
+        </thead>
+        <tbody>
+            
+        </tbody>
+    </table>
+</body>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script>
+    const apiUrl = 'https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVINValuesBatch/';
+    let localhost = 'https://vin-server-6egci5iyea-uc.a.run.app'
+    let yearFilter = false;
+    let hasUseMMY = true;
+    let resDataList = [];
+    let VINList = []
+    const pageDataCount = 100;
+
+    //送出
+    document.getElementById("inputForm").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        const inputText = document.getElementById("Vins").value;
+        VINList = []
+        const mergedString = dataProcess(inputText);
+
+        document.getElementById("loading").style.display = "block";
+        resDataList = []
+        const table = document.getElementById("carTable");
+        const rowCount = table.rows.length;
+        for (let i = rowCount - 1; i > 0; i--) {
+            table.deleteRow(i);
+        }
+
+        for (let i = 0; i < mergedString.length; i++) {
+            try {
+                const item = await post(mergedString[i]);
+                const req = []
+                for (let k = 0;k < item.length; k++) {
+                    var make = item[k].Make
+                    if (make === undefined || make === "") make = "undefinded"
+                    var model = ""
+                    if (item[k].Model !== "") {
+                        var resultArray = item[k].Model.split(/\s+|[\(\)\/-]/);
+                        resultArray = resultArray.filter(function(element) { return element !== ''; });
+                        for (var z = 0; z < resultArray.length; z++) {
+                            if (model !== "") model += " or "
+                            model += `\`Model\` LIKE '%${resultArray[z]}%'`
+                        }
+                    }
+                    if (item[k].Series !== "") {
+                        var resultArray = item[k].Series.split(/\s+|[\(\)\/-]/);
+                        resultArray = resultArray.filter(function(element) { return element !== ''; });
+                        for (var z = 0; z < resultArray.length; z++) {
+                            if (model !== "") model += " or "
+                            model += `\`Model\` LIKE '%${resultArray[z]}%'`
+                        }
+                    }
+                    if (item[k].Series2 !== "") {
+                        var resultArray = item[k].Series2.split(/\s+|[\(\)\/-]/);
+                        resultArray = resultArray.filter(function(element) { return element !== ''; });
+                        for (var z = 0; z < resultArray.length; z++) {
+                            if (model !== "") model += " or "
+                            model += `\`Model\` LIKE '%${resultArray[z]}%'`
+                        }
+                    }
+                    if (model !== "") {
+                        model = `and (${model})`
+                    } else {
+                        model = "and \`Model\` = 'undefined'"
+                    }
+                    console.log(`select \`Make\`,\`Model\`,\`Year\` from \`Summary table\` where \`Make\` LIKE '${make}' ${model}`)
+                    req.push({vin: item[k].VIN, sql: `select \`Make\`,\`Model\`,\`Year\` from \`Summary table\` where \`Make\` LIKE '${make}' ${model}`})
+                }
+
+                let mmy = []
+                if (hasUseMMY) { mmy = await getMMY({data: req}) }
+
+                for (let j = 0; j < item.length; j++) {
+                    let thisMMY = mmy.filter(it => it.vin === VINList[j]);
+                    resDataList.push({
+                        VIN: VINList[j],
+                        Make: item[j].Make,
+                        Model: item[j].Model,
+                        ModelYear: item[j].ModelYear,
+                        Series: item[j].Series,
+                        Series2: item[j].Series2,
+                        MMY: thisMMY
+                    });
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        document.getElementById("loading").style.display = "none";
+        setPage(0)
+
+        console.log(`final result: ${JSON.stringify(resDataList)}`);
+    });
+
+    // 字串相似度百分比
+    function levenshteinDistance(t1, t2) {
+        let str1 = t1.toLowerCase()
+        let str2 = t2.toLowerCase()
+        if (str1 === undefined || str1 === "") return 0
+        if (str2 === undefined || str2 === "") return 0
+        const len1 = str1.length;
+        const len2 = str2.length;
+
+        const matrix = [];
+
+        // 初始化矩陣
+        for (let i = 0; i <= len1; i++) {
+            matrix[i] = [i];
+        }
+
+        for (let j = 0; j <= len2; j++) {
+            matrix[0][j] = j;
+        }
+
+        // 填充矩陣
+        for (let i = 1; i <= len1; i++) {
+            for (let j = 1; j <= len2; j++) {
+                const cost = str1.charAt(i - 1) === str2.charAt(j - 1) ? 0 : 1;
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j] + 1,      // 刪除
+                    matrix[i][j - 1] + 1,      // 插入
+                    matrix[i - 1][j - 1] + cost // 替換
+                );
+            }
+        }
+
+        const maxLen = Math.max(len1, len2);
+        const distance = matrix[len1][len2];
+        const similarityPercentage = ((maxLen - distance) / maxLen) * 100;
+
+        console.log(`str1: ${str1}\nstr2: ${str2}\npercent: ${similarityPercentage.toFixed(2)}`)
+        return similarityPercentage.toFixed(2);
+    }
+
+    // 輸入資料處理成 US VIN API需要格式
+    function dataProcess(inputString) {
+        const inputArray = inputString.split(',').map(item => item.trim());
+        VINList = inputArray
+        let mergedString = [];
+        for (let i = 0; i < inputArray.length; i += 50) {
+            const group = inputArray.slice(i, i + 50);
+            const groupString = group.join(';');
+            mergedString.push(groupString.toString());
+        }
+        console.log(mergedString);
+        return mergedString;
+    }
+
+    // US VIN API
+    async function post(list) {
+        const data = {
+            format: "json",
+            data: list + ""
+        };
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams(data).toString()
+            });
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            const result = await response.json();
+            return result.Results;
+        } catch (error) {
+            console.error(error);
+            throw error;
+        }
+    }
+
+    // 獲得 US MMY
+    async function getMMY(list) {
+        try {
+            console.log("getMMY" + JSON.stringify(list))
+            const response = await fetch(`${localhost}/query`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(list)
+            });
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            const result = await response.json();
+            return result.data;
+        } catch (error) {
+            console.error(error);
+            result = []
+            for (let i = 0; i < list.data.length; i++) {
+                result.push({vin: list.data[i].vin, data: []})
+            }
+            return result
+        }
+    }
+
+    // 設定容器
+    function setPage(page) {
+        const carTable = document.getElementById("carTable");
+        const tbody = carTable.querySelector("tbody");
+
+        for (let i = 0;i < resDataList.length; i++) {
+            tbody.appendChild(toRow(resDataList[i]));
+        }
+    }
+
+    //表格填入
+    function toRow(data) {
+        const row = document.createElement("tr");
+
+        const vinCell = document.createElement("td");
+        vinCell.textContent = data.VIN;
+        const makeCell = document.createElement("td");
+        makeCell.textContent = data.Make;
+        const modelCell = document.createElement("td");
+        modelCell.textContent = data.Model;
+        const seriesCell = document.createElement("td");
+        seriesCell.textContent = data.Series;
+        const series2Cell = document.createElement("td");
+        series2Cell.textContent = data.Series2;
+        const yearCell = document.createElement("td");
+        yearCell.textContent = data.ModelYear;
+        const MMYCell = document.createElement("td");
+        MMYCell.appendChild(MMYTable(data));
+        const percentCell = document.createElement("td");
+        percentCell.appendChild(closest(data));
+
+        row.appendChild(vinCell);
+        row.appendChild(makeCell);
+        row.appendChild(modelCell);
+        row.appendChild(seriesCell);
+        row.appendChild(series2Cell);
+        row.appendChild(yearCell);
+        row.appendChild(MMYCell);
+        row.appendChild(percentCell);
+        
+        row.style.marginTop = "5px";
+        row.style.marginBottom = "5px";
+        row.style.marginLeft = "10px";
+        row.style.marginRight = "10px";
+
+        if (data.Make === "" || (data.Model === "" && data.Series === "" && data.Series2 === "")) {
+            row.style.backgroundColor = "#DCDCDC";
+        }
+
+        return row
+    }
+
+    // MMY表格 (包含相似度)
+    function MMYTable(dt) {
+        let row = dt.MMY
+        let year = dt.ModelYear
+        if (row.length === 0) { return document.createElement('table'); }
+        if (row[0].data.length === 0) { return document.createElement('table'); }
+
+        let data = row[0].data
+        if (year !== undefined && yearFilter) {
+            data = row[0].data.filter(it => { let start, end;
+                if (it.Year.includes("->")) {
+                    const sp = it.Year.split("->");
+                    start = (sp[0].replace(/[^0-9.]/g, '').substring(0, 4) || "0");
+                    end = (sp[1].replace(/[^0-9.]/g, '').substring(0, 4) || "9999");
+                } else if (it.Year.includes("-")) {
+                    const sp = it.Year.split("-");
+                    start = (sp[0].replace(/[^0-9.]/g, '').substring(0, 4) || "0");
+                    end = (sp[1].replace(/[^0-9.]/g, '').substring(0, 4) || "9999");
+                } else {
+                    start = it.Year;
+                    end = it.Year;
+                }
+
+                return(year >= parseInt(start) && year <= parseInt(end));
+            });
+        }
+
+        const table = document.createElement('table');
+        table.border = '1'; 
+
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        const headers = ['Make', 'Model', 'Year', 'Percent'];
+
+        headers.forEach(headerText => {
+            const th = document.createElement('th');
+            th.textContent = headerText;
+            headerRow.appendChild(th);
+        });
+
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+
+        data.forEach(info => {
+            let value = {pr: 0, value: undefined}
+            value.pr =  Math.max(levenshteinDistance(info.Model, dt.Model),
+            levenshteinDistance(info.Model, dt.Series),
+            levenshteinDistance(info.Model, dt.Series2))
+            value.value = info
+
+            const row = document.createElement('tr');
+
+            const makeCell = document.createElement('td');
+            makeCell.textContent = value.value.Make;
+            const modelCell = document.createElement('td');
+            modelCell.textContent = value.value.Model;
+            const yearCell = document.createElement('td');
+            yearCell.textContent = value.value.Year;
+            const percentCell = document.createElement('td');
+            percentCell.textContent = value.pr + "%";
+
+            row.appendChild(makeCell);
+            row.appendChild(modelCell);
+            row.appendChild(yearCell);
+            row.appendChild(percentCell);
+            tbody.appendChild(row);
+            table.appendChild(tbody);
+        });
+
+        return table
+    }
+
+    // 相似度最近的 (時間必判斷)
+    function closest(dt) {
+        let row = dt.MMY
+        let year = dt.ModelYear
+        if (row.length === 0) { return document.createElement('table'); }
+        if (row[0].data.length === 0) { return document.createElement('table'); }
+        let data = row[0].data.filter(it => { let start, end;
+            if (it.Year.includes("->")) {
+                const sp = it.Year.split("->");
+                start = (sp[0].replace(/[^0-9.]/g, '').substring(0, 4) || "0");
+                end = (sp[1].replace(/[^0-9.]/g, '').substring(0, 4) || "9999");
+            } else if (it.Year.includes("-")) {
+                const sp = it.Year.split("-");
+                start = (sp[0].replace(/[^0-9.]/g, '').substring(0, 4) || "0");
+                end = (sp[1].replace(/[^0-9.]/g, '').substring(0, 4) || "9999");
+            } else {
+                start = it.Year;
+                end = it.Year;
+            }
+
+            return(year >= parseInt(start) && year <= parseInt(end));
+        });
+
+        const table = document.createElement('table');
+        table.border = '1'; 
+
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        const headers = ['Make', 'Model', 'Year', 'Percent'];
+
+        headers.forEach(headerText => {
+            const th = document.createElement('th');
+            th.textContent = headerText;
+            headerRow.appendChild(th);
+        });
+
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+
+        // 最終選項只有一個
+        // let maxValue = {pr: 0, value: undefined}
+        // console.log("data closest")
+        // console.log(data)
+        // for (let k = 0; k < data.length; k++) {
+        //     let max = Math.max(levenshteinDistance(data[k].Model, dt.Model),
+        //     levenshteinDistance(data[k].Model, dt.Series),
+        //     levenshteinDistance(data[k].Model, dt.Series2))
+        //     if (max >= maxValue.pr) { 
+        //         maxValue.pr = max
+        //         maxValue.value = data[k] 
+        //     }
+        // }
+
+        // 最終選項可能有多個(若最高百分比相同)
+        let maxValue = [] //{pr: 0, value: undefined}
+        console.log("data closest")
+        console.log(data)
+        for (let k = 0; k < data.length; k++) {
+            let item = {pr: 0, value: data[k]}
+            item.pr = Math.max(levenshteinDistance(data[k].Model, dt.Model),
+            levenshteinDistance(data[k].Model, dt.Series),
+            levenshteinDistance(data[k].Model, dt.Series2))
+
+            if (maxValue.length === 0) {
+                maxValue.push(item)
+            } else if (item.pr > maxValue[0].pr) {
+                maxValue = []
+                maxValue.push(item)
+            } else if (item.pr === maxValue[0].pr) {
+                maxValue.push(item)
+            }
+        }
+
+        for (let j = 0; j < maxValue.length; j++) {
+            const row2 = document.createElement('tr');
+
+            const makeCell = document.createElement('td');
+            makeCell.textContent = maxValue[j].value.Make;
+            const modelCell = document.createElement('td');
+            modelCell.textContent = maxValue[j].value.Model;
+            const yearCell = document.createElement('td');
+            yearCell.textContent = maxValue[j].value.Year;
+            const percentCell = document.createElement('td');
+            percentCell.textContent = maxValue[j].pr + "%";
+
+            row2.appendChild(makeCell);
+            row2.appendChild(modelCell);
+            row2.appendChild(yearCell);
+            row2.appendChild(percentCell);
+            tbody.appendChild(row2);
+        }
+        
+        table.appendChild(tbody);
+        return table
+    }
+
+    //切換 Year篩選
+    function useMMY() {
+        var button = document.getElementById("useMMY");
+        
+        if (button.textContent === "MMY On") {
+            button.textContent = "MMY Off";
+            hasUseMMY = false
+        } else {
+            button.textContent = "MMY On";
+            hasUseMMY = true
+        }
+    }
+
+    //切換 Year篩選
+    function YearFilterButton() {
+        var button = document.getElementById("YearFilterButton");
+        
+        if (button.textContent === "Year Filter On") {
+            button.textContent = "Year Filter Off";
+            yearFilter = false
+        } else {
+            button.textContent = "Year Filter On";
+            yearFilter = true
+        }
+
+        const table = document.getElementById("carTable");
+        const rowCount = table.rows.length;
+        for (let i = rowCount - 1; i > 0; i--) {
+            table.deleteRow(i);
+        }
+        setPage(0)
+    }
+</script>
+</html>

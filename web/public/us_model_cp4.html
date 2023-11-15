@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+  <title>VIN_Model</title>
+  <style>
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    th, td {
+      border: 1px solid #dddddd;
+      text-align: left;
+      padding: 8px;
+    }
+
+    th {
+      background-color: #f2f2f2;
+    }
+
+    .cButton {
+        display: flex;
+        justify-content: center;
+        margin: 10px;
+    }
+
+    .pagination-button {
+        padding: 5px;
+        width: 100px;
+        text-align: center;
+        background-color: #ebebeb;
+        border: 1px solid #6b6b6b;
+        border-radius: 10px;
+        cursor: pointer;
+        margin-right: 50px;
+    }
+
+    .pagination-button:hover {
+        background-color: #727272c4;
+    }
+
+    dialog{
+      border: none;
+      box-shadow: 0 2px 6px #ccc;
+      padding-top: 10px;
+      padding-right: 25px;
+      place-content: 25px;
+      padding-bottom: 25px;
+      border-radius: 10px;
+    }
+    dialog::backdrop {
+      background-color: rgba(0, 0, 0, 0.1);
+    }
+  </style>
+</head>
+<body>
+<p>說明<br>方法1+2
+</p>
+<div style="margin: 10px 0;">
+    <input type="text" id="make" placeholder="Enter Make">
+    <input type="text" id="model" placeholder="Enter Model">
+    <input type="text" id="year" placeholder="Enter Year">
+    <button id="SearchButton">Search</button>
+    <p id="count"></p>
+</div>
+<div style="margin: 10px 0;">
+  <form>
+    <label>
+      <input type="checkbox" id="display" name="display" checked>
+      顯示相似度最接近資料
+    </label>
+  
+    <br>
+  
+    <label>
+      <input type="checkbox" id="yearFilter" name="yearFilter" checked>
+      時間過濾
+    </label>
+  
+    <br>
+  
+    <label>
+      <input type="checkbox" id="onlyTime" name="onlyTime" checked>
+      僅顯示有時間資料
+    </label>
+  </form>
+</div>
+
+<table id="myTable">
+  <thead>
+    <tr>
+      <th>VehicleSpecSchemaId</th>
+      <th>MakeID</th>
+      <th>ModelID</th>
+      <th>Make</th>
+      <th>Model</th>
+      <th>Year</th>
+      <th>OG_MMY_Closest</th>
+    </tr>
+  </thead>
+  <tbody id="tableBody">
+    <!-- Table rows will be added dynamically using JavaScript -->
+  </tbody>
+</table>
+<div class="cButton">
+    <button class="pagination-button" id="previous">Previous</button>
+    <button class="pagination-button" id="next">Next</button>
+</div>
+  
+<dialog id="dialog">
+  <div id="title" style="margin-bottom: 10px;"><h3>處理中</h3></div>
+  <div id="content"></div>
+</dialog>
+
+</body>
+<script>
+  const recordsPerPage = 1000;
+  const pervious = document.getElementById("previous")
+  const next = document.getElementById("next")
+  let dataList = [];
+  let currentDataList = [];
+  let ogMmyList = [];
+  let currentPage = 1;
+  let totalPages = 1;
+  let dialog = document.querySelector("#dialog");
+  let displayRecent = true
+  let yearFilter = true
+  let onlyTime = true
+
+  /**
+   * 獲取初始資料
+   */
+  fetch('/public/us_mmy.json')
+  .then(response => {
+      if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      return response.json();
+  })
+  .then(data => {
+      dataList = data;
+      currentDataList = dataList
+      totalPages = Math.ceil(currentDataList.length / recordsPerPage)
+      $('#count').text(`totalCount: ${currentDataList.length}`);
+      console.log(`currentDataList.length: ${currentDataList.length}\ntotalPages: ${totalPages}`)
+      displayPage(currentPage);
+  })
+  .catch(error => console.error('Error:', error));
+
+  fetch('/public/og_mmy.json')
+  .then(response => {
+      if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      return response.json();
+  })
+  .then(data => {
+      ogMmyList = data;
+      console.log(`ogMmyList: ${JSON.stringify(ogMmyList)}`)
+  })
+  .catch(error => console.error('Error:', error));
+
+  /**
+   * 設定監聽事件
+   */
+  function debounce(func, delay) {
+    let timer;
+    return function() {
+      clearTimeout(timer);
+      timer = setTimeout(() => func.apply(this, arguments), delay);
+    };
+  }
+
+  document.getElementById("SearchButton").addEventListener("click", function () {
+    var make = document.getElementById("make").value.toLowerCase();
+    var model = document.getElementById("model").value.toLowerCase();
+    var year = document.getElementById("year").value.toLowerCase();
+    currentDataList = dataList.filter(item => {
+        let jMake = item.Make.toLowerCase().includes(make)
+        let jModel = item.Model.toLowerCase().includes(model)
+        let jYear = item.Year.toLowerCase().includes(year)
+        if (make === "") { jMake = true }
+        if (model === "") { jModel = true }
+        if (year === "") { jYear = true }
+        return (jMake && jModel && jYear);
+    });
+
+    totalPages = Math.ceil(currentDataList.length / recordsPerPage)
+    $('#count').text(`totalCount: ${currentDataList.length}`);
+    console.log(`currentDataList.length: ${currentDataList.length}\ntotalPages: ${totalPages}`)
+    currentPage = 1;
+    displayPage(currentPage);
+  });
+
+  document.getElementById("previous").addEventListener("click", function () {
+    console.log(`currentPage: ${currentPage}\ntotalPages: ${totalPages}`)
+    if (currentPage > 1) {
+        currentPage--;
+        displayPage(currentPage);
+    }
+  });
+
+  document.getElementById("next").addEventListener("click", function () {
+    console.log(`currentPage: ${currentPage}\ntotalPages: ${totalPages}`)
+    if (currentPage < totalPages) {
+        currentPage++;
+        displayPage(currentPage);
+    }
+  });
+
+  document.getElementById("display").addEventListener("click", debounce(function() {
+    let e = document.getElementById("display")
+    if (displayRecent) {
+      displayRecent = false
+    } else {
+      displayRecent = true
+    }
+    displayPage(currentPage)
+  }, 500));
+
+  document.getElementById("yearFilter").addEventListener("click", debounce(function() {
+    let e = document.getElementById("yearFilter")
+    if (yearFilter) {
+      yearFilter = false
+    } else {
+      yearFilter = true
+    }
+    displayPage(currentPage)
+  }, 500));
+
+  document.getElementById("onlyTime").addEventListener("click", debounce(function() {
+    let e = document.getElementById("onlyTime")
+    if (onlyTime) {
+      onlyTime = false
+    } else {
+      onlyTime = true
+    }
+    displayPage(currentPage)
+  }, 500));
+
+  /**
+   * Function
+   */
+  function displayPage(pageNumber) {
+      var tableBody = document.getElementById("tableBody");
+      tableBody.innerHTML = "";
+
+      var startIndex = (pageNumber - 1) * recordsPerPage;
+      var endIndex = startIndex + recordsPerPage;
+      var pageData = currentDataList.slice(startIndex, endIndex);
+
+      for (var i = 0; i < pageData.length; i++) {
+          var row = tableBody.insertRow(i);
+
+          var cell1 = row.insertCell(0);
+          var cell2 = row.insertCell(1);
+          var cell3 = row.insertCell(2);
+          var cell4 = row.insertCell(3);
+          var cell5 = row.insertCell(4);
+          var cell6 = row.insertCell(5);
+          var cell7 = row.insertCell(6);
+
+          cell1.innerHTML = pageData[i].VehicleSpecSchemaId;
+          cell2.innerHTML = pageData[i].MakeID;
+          cell3.innerHTML = pageData[i].ModelID;
+          cell4.innerHTML = pageData[i].Make;
+          cell5.innerHTML = pageData[i].Model;
+          cell6.innerHTML = pageData[i].Year;      
+          let filterRes = filterOG(startIndex + i)
+          if (filterRes === "NO") {
+            row.style.backgroundColor = "rgba(200, 100, 100, 0.1)";
+          } else {
+            cell7.appendChild(filterRes);
+          }
+      }
+
+      document.body.scrollTop = 0;
+      document.documentElement.scrollTop = 0;
+      setPageBottom()
+  }
+
+  function filterOG(index) {
+    let item = currentDataList[index]
+    if (onlyTime && (item.Year === undefined || item.Year === "")) { return "NO" }
+    let data = ogMmyList.filter(it => {
+      if (it.Make !== "" && it.Model !== "") {
+        let modelCheck = false
+
+        // Method 1
+        var m1 = item.Model.split(/\s+|[\(\)\/-]/);
+        m1 = m1.filter(function(element) { return element !== ''; });
+        for (var z = 0; z < m1.length; z++) {
+          modelCheck |= it.Model.toLowerCase().includes(m1[z].toLowerCase())
+        }
+        // Method 2
+        var m2 = it.Model.split(/\s+|[\(\)\/-]/);
+        m2 = m2.filter(function(element) { return element !== ''; });
+        for (var z = 0; z < m2.length; z++) {
+          modelCheck |= item.Model.toLowerCase().includes(m2[z].toLowerCase())
+        }
+
+        return it.Make.toLowerCase() === item.Make.toLowerCase() && modelCheck;
+      } else {
+        return false;
+      }
+    });
+  
+    if (yearFilter) {
+      data = data.filter(it => { 
+        let start, end;
+        if (it.Year.includes("->")) {
+            const sp = it.Year.split("->");
+            start = (sp[0].replace(/[^0-9.]/g, '').substring(0, 4) || "0");
+            end = (sp[1].replace(/[^0-9.]/g, '').substring(0, 4) || "9999");
+        } else if (it.Year.includes("-")) {
+            const sp = it.Year.split("-");
+            start = (sp[0].replace(/[^0-9.]/g, '').substring(0, 4) || "0");
+            end = (sp[1].replace(/[^0-9.]/g, '').substring(0, 4) || "9999");
+        } else {
+            start = it.Year;
+            end = it.Year;
+        }
+      
+        return(item.Year >= parseInt(start) && item.Year <= parseInt(end));
+      });
+    }
+
+    if (data.length === 0) {
+      return "NO"
+    } else {
+      return closest(data, item)
+    }
+  }
+
+  // 相似度最近的 (時間必判斷) (OG_MMY, US_API)
+  function closest(data, select) {
+    const table = document.createElement('table');
+    table.border = '1'; 
+
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    const headers = ['Make', 'Model', 'Year', 'Percent'];
+
+    headers.forEach(headerText => {
+        const th = document.createElement('th');
+        th.textContent = headerText;
+        headerRow.appendChild(th);
+    });
+
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    // 最終選項可能有多個(若最高百分比相同)
+    let maxValue = [] //{pr: 0, value: undefined}
+    for (let k = 0; k < data.length; k++) {
+        let item = {pr: 0, value: data[k]}
+        item.pr = Math.max(levenshteinDistance(data[k].Model, select.Model, data[k].Make))
+
+        if (displayRecent) {
+          if (item.pr === 0) continue;
+          if (maxValue.length === 0) {
+              maxValue.push(item)
+          } else if (item.pr > maxValue[0].pr) {
+              maxValue = []
+              maxValue.push(item)
+          } else if (item.pr === maxValue[0].pr) {
+              maxValue.push(item)
+          }
+        } else {
+          maxValue.push(item)
+        }
+    }
+
+    for (let j = 0; j < maxValue.length; j++) {
+        const row2 = document.createElement('tr');
+
+        const makeCell = document.createElement('td');
+        makeCell.textContent = maxValue[j].value.Make;
+        const modelCell = document.createElement('td');
+        modelCell.textContent = maxValue[j].value.Model;
+        const yearCell = document.createElement('td');
+        yearCell.textContent = maxValue[j].value.Year;
+        const percentCell = document.createElement('td');
+        percentCell.textContent = maxValue[j].pr + "%";
+
+        row2.appendChild(makeCell);
+        row2.appendChild(modelCell);
+        row2.appendChild(yearCell);
+        row2.appendChild(percentCell);
+        tbody.appendChild(row2);
+    }
+    
+    table.appendChild(tbody);
+    return tab
+  }
+
+    // 字串相似度百分比 t1=>OG_MMY,t2=>US_API
+    function levenshteinDistance(t1, t2, make) {
+      let str1 = t1.toLowerCase()
+      let str2 = t2.toLowerCase()
+      if (str1 === undefined || str1 === "") return 0
+      if (str2 === undefined || str2 === "") return 0
+
+      //以下兩個額外判斷可以刪除==========================================
+      //以 "空格" 切割後取締一個元素，默認空格格是第一位為主 model後面為類型?
+      if (make.toLowerCase() === "audi") {
+        if (str1.includes(str2.split(' ')[0]) && str1.includes("-")) return 100
+        //若以 "/" 分割者，默認式多個型號合併使用
+      }
+
+      // const result = str2.split(/[\/\s]+/);
+      // const filteredResult = result.filter(element => element !== '');
+      // for (let i = 0;i < filteredResult.length;i ++) {
+      //   if (str1.includes(filteredResult[i])) return 100
+      // }
+      //================================================================
+
+      const len1 = str1.length;
+      const len2 = str2.length;
+
+      const matrix = [];
+
+      // 初始化矩陣
+      for (let i = 0; i <= len1; i++) {
+          matrix[i] = [i];
+      }
+
+      for (let j = 0; j <= len2; j++) {
+          matrix[0][j] = j;
+      }
+
+      // 填充矩陣
+      for (let i = 1; i <= len1; i++) {
+          for (let j = 1; j <= len2; j++) {
+              const cost = str1.charAt(i - 1) === str2.charAt(j - 1) ? 0 : 1;
+              matrix[i][j] = Math.min(
+                  matrix[i - 1][j] + 1,      // 刪除
+                  matrix[i][j - 1] + 1,      // 插入
+                  matrix[i - 1][j - 1] + cost // 替換
+              );
+          }
+      }
+
+      const maxLen = Math.max(len1, len2);
+      const distance = matrix[len1][len2];
+      const similarityPercentage = ((maxLen - distance) / maxLen) * 100;
+
+      return similarityPercentage.toFixed(2);
+    }
+
+  function setPageBottom() {
+      if (currentPage === 1) {
+        pervious.style.display = "none"
+      } else {
+        pervious.style.display = "block"
+      }
+
+      if (currentPage < totalPages) {
+        next.style.display = "block"
+      } else {
+        next.style.display = "none"
+      }
+  }
+</script>
+</html>
