@@ -105,7 +105,10 @@
       <th>Make</th>
       <th>Model</th>
       <th>Year</th>
-      <th>OG_MMY_Closest</th>
+      <th>OG_Make</th>
+      <th>OG_Model</th>
+      <th>OG_Year</th>
+      <th>Percent</th>
     </tr>
   </thead>
   <tbody id="tableBody">
@@ -276,7 +279,6 @@
 
       for (var i = 0; i < pageData.length; i++) {
           var row = tableBody.insertRow(i);
-
           var cell1 = row.insertCell(0);
           var cell2 = row.insertCell(1);
           var cell3 = row.insertCell(2);
@@ -284,6 +286,9 @@
           var cell5 = row.insertCell(4);
           var cell6 = row.insertCell(5);
           var cell7 = row.insertCell(6);
+          var cell8 = row.insertCell(7);
+          var cell9 = row.insertCell(8);
+          var cell10 = row.insertCell(9);
 
           cell1.innerHTML = pageData[i].VehicleSpecSchemaId;
           cell2.innerHTML = pageData[i].MakeID;
@@ -292,11 +297,10 @@
           cell5.innerHTML = pageData[i].Model;
           cell6.innerHTML = pageData[i].Year;      
           let filterRes = filterOG(startIndex + i)
-          if (filterRes === "NO") {
-            row.style.backgroundColor = "rgba(200, 100, 100, 0.1)";
-          } else {
-            cell7.appendChild(filterRes);
-          }
+          cell7.innerHTML = filterRes[0];
+          cell8.innerHTML = filterRes[1];
+          cell9.innerHTML = filterRes[2];
+          cell10.innerHTML = filterRes[3];
       }
 
       document.body.scrollTop = 0;
@@ -306,7 +310,7 @@
 
   function filterOG(index) {
     let item = currentDataList[index]
-    if (onlyTime && (item.Year === undefined || item.Year === "")) { return "NO" }
+    if (onlyTime && (item.Year === undefined || item.Year === "")) { return ["", "", "", ""] }
     let data = ogMmyList.filter(it => {
       if (it.Make !== "" && it.Model !== "") {
         let modelCheck = false
@@ -323,8 +327,8 @@
         for (var z = 0; z < m2.length; z++) {
           modelCheck |= item.Model.toLowerCase().includes(m2[z].toLowerCase())
         }
-
-        return it.Make.toLowerCase() === item.Make.toLowerCase() && modelCheck;
+        // item.Make.toLowerCase().includes(it.Make.toLowerCase())
+        return it.Make.toLowerCase().includes(item.Make.toLowerCase()) && modelCheck;
       } else {
         return false;
       }
@@ -352,7 +356,7 @@
     }
 
     if (data.length === 0) {
-      return "NO"
+      return ["", "", "", ""]
     } else {
       return closest(data, item)
     }
@@ -384,42 +388,22 @@
         let item = {pr: 0, value: data[k]}
         item.pr = Math.max(levenshteinDistance(data[k].Model, select.Model, data[k].Make))
 
-        if (displayRecent) {
-          if (item.pr === 0) continue;
-          if (maxValue.length === 0) {
-              maxValue.push(item)
-          } else if (item.pr > maxValue[0].pr) {
-              maxValue = []
-              maxValue.push(item)
-          } else if (item.pr === maxValue[0].pr) {
-              maxValue.push(item)
-          }
-        } else {
-          maxValue.push(item)
+        if (item.pr === 0) continue;
+        if (maxValue.length === 0) {
+            maxValue.push(item)
+        } else if (item.pr > maxValue[0].pr) {
+            maxValue = []
+            maxValue.push(item)
+        } else if (item.pr === maxValue[0].pr) {
+            maxValue.push(item)
         }
     }
 
-    for (let j = 0; j < maxValue.length; j++) {
-        const row2 = document.createElement('tr');
-
-        const makeCell = document.createElement('td');
-        makeCell.textContent = maxValue[j].value.Make;
-        const modelCell = document.createElement('td');
-        modelCell.textContent = maxValue[j].value.Model;
-        const yearCell = document.createElement('td');
-        yearCell.textContent = maxValue[j].value.Year;
-        const percentCell = document.createElement('td');
-        percentCell.textContent = maxValue[j].pr + "%";
-
-        row2.appendChild(makeCell);
-        row2.appendChild(modelCell);
-        row2.appendChild(yearCell);
-        row2.appendChild(percentCell);
-        tbody.appendChild(row2);
+    if (maxValue.length === 0) {
+      return ["", "", "", ""]
+    } else {
+      return [maxValue[0].value.Make, maxValue[0].value.Model, maxValue[0].value.Year, maxValue[0].pr + "%"]
     }
-    
-    table.appendChild(tbody);
-    return table
   }
 
     // 字串相似度百分比 t1=>OG_MMY,t2=>US_API
