@@ -156,7 +156,6 @@
       currentDataList = dataList
       totalPages = Math.ceil(currentDataList.length / recordsPerPage)
       $('#count').text(`totalCount: ${currentDataList.length}`);
-      console.log(`currentDataList.length: ${currentDataList.length}\ntotalPages: ${totalPages}`)
       displayPage(currentPage);
   })
   .catch(error => console.error('Error:', error));
@@ -171,7 +170,6 @@
   })
   .then(data => {
       ogMmyList = data;
-      console.log(`ogMmyList: ${JSON.stringify(ogMmyList)}`)
   })
   .catch(error => console.error('Error:', error));
 
@@ -185,7 +183,6 @@
   })
   .then(data => {
     vinComparisionList = data;
-    console.log(`vinComparisionList: ${JSON.stringify(vinComparisionList)}`)
   })
   .catch(error => console.error('Error:', error));
   /**
@@ -322,6 +319,7 @@
   }
 
   function filterOG(index) {
+    // item是 US MMY
     let item = currentDataList[index]
     let data = []
 
@@ -329,12 +327,10 @@
 
     let dtComparision = vinComparisionList.find(dt => dt.vin_model.toLowerCase() === item.Model.toLowerCase() && item.Make.toLowerCase() === dt.make.toLowerCase());
     if (dtComparision !== undefined) {
-      console.log(`dtComparision: ${JSON.stringify(dtComparision)}`)
       if (dtComparision.status === "specify") {
         data = ogMmyList.filter(it => it.Model === dtComparision.og_model && it.Make.toLowerCase() === dtComparision.make.toLowerCase())
       } else if (dtComparision.status === "specify_or") {
         let element = dtComparision.og_model.split("||")
-        console.log(element)
         for (let i = 0;i < element.length;i++) {
           data.push(...ogMmyList.filter(it => it.Model === element[i].trim() && it.Make.toLowerCase() === dtComparision.make.toLowerCase()))
         }
@@ -345,9 +341,23 @@
       data = ogMmyList.filter(it => {
       if (it.Make !== "" && it.Model !== "") {
           let modelCheck = false
+          let selectMake = item.Make.toLowerCase()
+          let selectModel = item.Model.toLowerCase()
+
+          // 特殊車款處理，JS在 Fliter中可以修改值
+          // toyota / scion
+          if (selectMake === "toyota" && selectModel.toLowerCase().includes("scion")) {
+            selectMake = "scion"
+            selectModel = item.Model.split(" ")[1].trim().toLowerCase()
+          }
+          // Mercedes-Benz / AMG
+          if (selectMake === "mercedes-benz" && selectModel.toLowerCase().includes("amg")) {
+            selectMake = "mercedes-amg"
+            selectModel = item.Model.split(" ")[1].trim().toLowerCase()
+          }
 
           // Method 1
-          var m1 = item.Model.split(/\s+|[\(\)\/-]/);
+          var m1 = selectModel.split(/\s+|[\(\)\/-]/);
           m1 = m1.filter(function(element) { return element !== ''; });
           for (var z = 0; z < m1.length; z++) {
             modelCheck |= it.Model.toLowerCase().includes(m1[z].toLowerCase())
@@ -356,10 +366,10 @@
           var m2 = it.Model.split(/\s+|[\(\)\/-]/);
           m2 = m2.filter(function(element) { return element !== ''; });
           for (var z = 0; z < m2.length; z++) {
-            modelCheck |= item.Model.toLowerCase().includes(m2[z].toLowerCase())
+            modelCheck |= selectModel.toLowerCase().includes(m2[z].toLowerCase())
           }
 
-          return it.Make.toLowerCase().includes(item.Make.toLowerCase()) && modelCheck;
+          return it.Make.toLowerCase().includes(selectMake) && modelCheck;
         } else {
           return false;
         }
@@ -472,8 +482,10 @@
       //以下兩個額外判斷可以刪除==========================================
       //以 "空格" 切割後取締一個元素，默認空格格是第一位為主 model後面為類型?
       if (make.toLowerCase() === "audi") {
-        if (str1.includes(str2.split(' ')[0]) && str1.includes("-")) return 100
         //若以 "/" 分割者，默認式多個型號合併使用
+        if (str1.includes(str2.split(' ')[0]) && str1.includes("-")) return 100
+      } else if (make.toLowerCase() === "mercedes-amg" && str1.includes("gt")) {
+         return 100
       }
 
       // const result = str2.split(/[\/\s]+/);

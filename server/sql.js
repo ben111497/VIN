@@ -1,6 +1,7 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const dbPath = path.join(__dirname, 'public/MMY_US_listC_V0.6_231013.db');
+const dbPath2 = path.join(__dirname, 'public/VIN.db');
 const express = require('express');
 const cors = require('cors');
 const app = express();
@@ -22,6 +23,14 @@ app.get('/', (req, res) => {
 }); 
 
 const db = new sqlite3.Database(dbPath, (err) => {
+  if (err) {
+    console.error('connect failed:', err.message);
+  } else {
+    console.log('connected');
+  }
+});
+
+const dbVinComparision = new sqlite3.Database(dbPath2, (err) => {
   if (err) {
     console.error('connect failed:', err.message);
   } else {
@@ -72,4 +81,40 @@ app.post('/query', (req, res) => {
             }
         });
     }  
+});
+
+app.post('/vin/exec', (req, res) => {
+  const { sql } = req.body;
+
+  dbVinComparision.run(`${sql}`, function(err) {
+      if (err) {
+          console.error('failed:', err.message);
+          res.status(500).json({ message: 'failed' });
+          return;
+      }
+      res.status(200).json({ message: 'success' });
+  });
+});
+
+app.post('/vin/query', (req, res) => {
+  console.log(JSON.stringify(req.body))
+  const data = req.body.data;
+  let resList = []
+
+  for (let i = 0; i < data.length; i++) {
+    dbVinComparision.all(`${data[i].sql}`, (err, rows) => {
+          console.log(`---------${i}---------`)
+          console.log(data[i].vin)
+          console.log(rows)
+          if (err) {
+              console.error(err.message);
+              res.status(500).json({ data: [], message: '${err.message}' });
+          } else {
+              resList.push({ vin: data[i].vin, data: rows})
+              if (resList.length === data.length) {
+                  res.status(200).json({ data: resList, message: 'success' });
+              }
+          }
+      });
+  }  
 });

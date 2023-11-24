@@ -34,6 +34,10 @@ app.get('/vin_v3', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/vin_test_v3.html'));
 });
 
+app.get('/vin_v4', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/vin_test_v4.html'));
+});
+
 app.get('/us_mmy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/us_model.html'));
 });
@@ -125,13 +129,14 @@ app.get('/home', (req, res) => {
             <button onclick="window.location.href='/vin'">vin_test</button>
             <button onclick="window.location.href='/vin_v2'">vin_test (Method 1)</button>
             <button onclick="window.location.href='/vin_v3'">vin_test (Method 4)</button>
+            <button onclick="window.location.href='/vin_v4'">vin_test (修正版)</button>
           </div>
 
           <div class="title"><h3>Data Table Test</h3></div>
           <div class="inner-container">
             <button onclick="window.location.href='/us_mmy_cp'">US_MMY (Method 1)</button>
             <button onclick="window.location.href='/us_mmy_cp2'">US_MMY (Method 2)</button>
-            <button onclick="window.location.href='/us_mmy_cp4'">US_MMY (Method 4)</button>
+            <button onclick="window.location.href='/us_mmy_cp4'">US_MMY (修正版)</button>
           </div>
 
           <div class="title"><h3>Data Table</h3></div>

@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>VIN</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        #input {
+            width: 100%;
+        }
+    
+        #Vins {
+            width: 250px;
+        }
+    
+        .pagination {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .pagination button {
+            margin: 0 5px;
+        }
+
+        #prevButton, #nextButton {
+            display: none;
+        }
+
+        table {
+            border: 1px solid grey;
+            margin: 10px;
+        }
+
+        td {
+            border: 1px solid grey;
+            margin: 5px;
+            padding: 5px 10px;
+        }
+        
+        th {
+            border: 1px solid grey;
+            margin: 5px;
+            padding: 5px 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>VIN 測試</h1>
+
+    <form id="inputForm">
+        <label for="Vins">VINs：</label>
+        <input type="text" id="Vins" name="Vins" required>
+
+        <input type="submit" value="送出">
+    </form>
+
+    <div style="margin: 10px 0">
+        <p>測試資料</p>
+        <textarea id="textArea" rows="5" cols="150">3GKALVEX1JL223445,3N1AB8CV4NY275732,5GAEVBKW1NJ113740,1GNSCNKDXPR257550,JN8AZ2AE3M9272161,JN8BT3BA8PW404439,JM7BP2S7A01110721,1GNSKCKD3NR164549,1C4HJXEN8NW129217,5N1BT3BA5PC690498,1G6DN5RK4N0118549,1C4SJVBT2NS200626,SALVA2BX9JH322639,1N6BF0LY6KN810809,3N1CP5DV3LL564439,SALGS2SV9JA501146,4T1G11AK1MU428624,1FMSK7DH5NGA06222,SALWV2SV7JA187709,4T1K61AK8MU600613,KM8SMDHF1EU042847,5TDBZRBH6MS119423,JTDKTUD3XCD514561,YV1MK672982078423,WDBNG76J7A440940,2T3WFREV9EW129259,JA32W5FV6EUO14992,6G3F15RW8EL959845,1N4AL3APXEC901493,2V8HW34199R584167,SALSK2D48BA261278,5FNYF6H73HB033352,JM1BL1UP3D1798278,5J8TB3H35FL018008,T32TVAC009630,SALWR2RV1JA803933,JN1BV7AP8FM352827,WBAWB7C58AP049392,WBA2R3105G5A93187,YV1RS592972628697,1NXBU4EEOAZ334270,WAURV78T49A021941,3GYFNGEY3AS597314,1J48A5H11AL153965</textarea>
+        <button onclick="copyText()">Copy Text</button>
+    </div>
+
+    <div style="margin: 10px 0;">
+        <form>
+          <label>
+            <input type="checkbox" id="display" name="display" checked>
+            顯示相似度最接近資料
+          </label>
+        
+          <br>
+        
+          <label>
+            <input type="checkbox" id="yearFilter" name="yearFilter" checked>
+            時間過濾
+          </label>
+
+          <br>
+
+          <label>
+            <input type="checkbox" id="seriesFilter" name="seriesFilter">
+            Series and Series2 比對
+          </label>
+        </form>
+      </div>
+    
+
+    <div id="result"></div>
+    <div id="loading" style="display: none;">處理中...</div>
+    <table id="carTable">
+        <thead>
+            <tr>
+                <th>VIN</th>
+                <th>Make</th>
+                <th>Model</th>
+                <th>Series</th>
+                <th>Series2</th>
+                <th>Year</th>
+                <th>Closest</th>
+            </tr>
+        </thead>
+        <tbody>
+            
+        </tbody>
+    </table>
+</body>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script>
+    const apiUrl = 'https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVINValuesBatch/';
+    let localhost = 'https://vin-server-6egci5iyea-uc.a.run.app'
+    let resDataList = [];
+    let VINList = []
+    let displayRecent = true
+    let yearFilter = true
+    let seriesFilter = false
+    const pageDataCount = 100;
+    let ogMmyList = [];
+    let vinComparisionList = [];
+
+    (async () => {
+        let list = await getVinComparision({data: [{vin: "NA", sql: "SELECT `make`,`vin_model`,`og_model`,`status` FROM `VinComparision_US`" }]});
+        vinComparisionList = list[0]["data"]
+    })();
+
+    (async () => {
+        let list = await getMMY({data: [{vin: "NA", sql: "SELECT `Make`, `Model`, `Year` FROM `Summary table`" }]});
+        ogMmyList = list[0]["data"]
+    })();
+
+
+    //送出
+    document.getElementById("inputForm").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        const inputText = document.getElementById("Vins").value;
+        VINList = []
+        const mergedString = dataProcess(inputText);
+
+        document.getElementById("loading").style.display = "block";
+        resDataList = []
+        const table = document.getElementById("carTable");
+        const rowCount = table.rows.length;
+        for (let i = rowCount - 1; i > 0; i--) {
+            table.deleteRow(i);
+        }
+
+        for (let i = 0; i < mergedString.length; i++) {
+            try {
+                const item = await post(mergedString[i]);
+                const req = []
+                for (let k = 0;k < item.length; k++) {
+                    var make = item[k].Make
+                    if (make === undefined || make === "") make = "undefinded"
+                    var model = ""
+                    if (item[k].Model !== "") {
+                        var resultArray = item[k].Model.split(/\s+|[\(\)\/-]/);
+                        resultArray = resultArray.filter(function(element) { return element !== ''; });
+                        for (var z = 0; z < resultArray.length; z++) {
+                            if (model !== "") model += " or "
+                            model += `\`Model\` LIKE '%${resultArray[z]}%'`
+                        }
+                    }
+                    // if (item[k].Series !== "") {
+                    //     var resultArray = item[k].Series.split(/\s+|[\(\)\/-]/);
+                    //     resultArray = resultArray.filter(function(element) { return element !== ''; });
+                    //     for (var z = 0; z < resultArray.length; z++) {
+                    //         if (model !== "") model += " or "
+                    //         model += `\`Model\` LIKE '%${resultArray[z]}%'`
+                    //     }
+                    // }
+                    // if (item[k].Series2 !== "") {
+                    //     var resultArray = item[k].Series2.split(/\s+|[\(\)\/-]/);
+                    //     resultArray = resultArray.filter(function(element) { return element !== ''; });
+                    //     for (var z = 0; z < resultArray.length; z++) {
+                    //         if (model !== "") model += " or "
+                    //         model += `\`Model\` LIKE '%${resultArray[z]}%'`
+                    //     }
+                    // }
+                    if (model !== "") {
+                        model = `and (${model})`
+                    } else {
+                        model = "and \`Model\` = 'undefined'"
+                    }
+                    req.push({vin: item[k].VIN, sql: `select \`Make\`,\`Model\`,\`Year\` from \`Summary table\` where \`Make\` LIKE '${make}' ${model}`})
+                }
+
+                let mmy = await getMMY({data: req})
+
+                for (let j = 0; j < item.length; j++) {
+                    let thisMMY = mmy.filter(it => it.vin === VINList[j]);
+                    resDataList.push({
+                        VIN: VINList[j],
+                        Make: item[j].Make,
+                        Model: item[j].Model,
+                        ModelYear: item[j].ModelYear,
+                        Series: item[j].Series,
+                        Series2: item[j].Series2,
+                        MMY: thisMMY
+                    });
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        document.getElementById("loading").style.display = "none";
+        setPage(0)
+    });
+    
+    //監聽事件
+    function debounce(func, delay) {
+        let timer;
+        return function() {
+        clearTimeout(timer);
+        timer = setTimeout(() => func.apply(this, arguments), delay);
+        };
+    }
+
+    document.getElementById("display").addEventListener("click", debounce(function() {
+        let e = document.getElementById("display")
+        if (displayRecent) {
+            displayRecent = false
+        } else {
+            displayRecent = true
+        }
+        setPage(0)
+    }, 500));
+
+    document.getElementById("yearFilter").addEventListener("click", debounce(function() {
+        let e = document.getElementById("yearFilter")
+        if (yearFilter) {
+            yearFilter = false
+        } else {
+            yearFilter = true
+        }
+        setPage(0)
+    }, 500));
+
+    document.getElementById("seriesFilter").addEventListener("click", debounce(function() {
+        let e = document.getElementById("seriesFilter")
+        if (seriesFilter) {
+            seriesFilter = false
+        } else {
+            seriesFilter = true
+        }
+        setPage(0)
+    }, 500));
+
+    // 字串相似度百分比
+    function levenshteinDistance(t1, t2, make) {
+        let str1 = t1.toLowerCase()
+        let str2 = t2.toLowerCase()
+        if (str1 === undefined || str1 === "") return 0
+        if (str2 === undefined || str2 === "") return 0
+
+        //以下兩個額外判斷可以刪除==========================================
+        //以 "空格" 切割後取締一個元素，默認空格格是第一位為主 model後面為類型?
+        if (make.toLowerCase() === "audi") {
+            if (str1.includes(str2.split(' ')[0]) && str1.includes("-")) return 100
+        }
+        //若以 "/" 分割者，默認式多個型號合併使用
+        // const result = str2.split(/[\/\s]+/);
+        // const filteredResult = result.filter(element => element !== '');
+        // for (let i = 0;i < filteredResult.length;i ++) {
+        //   if (str1.includes(filteredResult[i])) return 100
+        // }
+        //================================================================
+
+        const len1 = str1.length;
+        const len2 = str2.length;
+
+        const matrix = [];
+
+        // 初始化矩陣
+        for (let i = 0; i <= len1; i++) {
+            matrix[i] = [i];
+        }
+
+        for (let j = 0; j <= len2; j++) {
+            matrix[0][j] = j;
+        }
+
+        // 填充矩陣
+        for (let i = 1; i <= len1; i++) {
+            for (let j = 1; j <= len2; j++) {
+                const cost = str1.charAt(i - 1) === str2.charAt(j - 1) ? 0 : 1;
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j] + 1,      // 刪除
+                    matrix[i][j - 1] + 1,      // 插入
+                    matrix[i - 1][j - 1] + cost // 替換
+                );
+            }
+        }
+
+        const maxLen = Math.max(len1, len2);
+        const distance = matrix[len1][len2];
+        const similarityPercentage = ((maxLen - distance) / maxLen) * 100;
+
+        return similarityPercentage.toFixed(2);
+    }
+
+    // 輸入資料處理成 US VIN API需要格式
+    function dataProcess(inputString) {
+        const inputArray = inputString.split(',').map(item => item.trim());
+        VINList = inputArray
+        let mergedString = [];
+        for (let i = 0; i < inputArray.length; i += 50) {
+            const group = inputArray.slice(i, i + 50);
+            const groupString = group.join(';');
+            mergedString.push(groupString.toString());
+        }
+
+        return mergedString;
+    }
+
+    // US VIN API
+    async function post(list) {
+        const data = {
+            format: "json",
+            data: list + ""
+        };
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams(data).toString()
+            });
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            const result = await response.json();
+            return result.Results;
+        } catch (error) {
+            console.error(error);
+            throw error;
+        }
+    }
+
+    // 獲得 US MMY
+    async function getMMY(list) {
+        try {
+            console.log("getMMY: " + JSON.stringify(list))
+            const response = await fetch(`${localhost}/query`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(list)
+            });
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            const result = await response.json();
+            return result.data;
+        } catch (error) {
+            console.error(error);
+            result = []
+            for (let i = 0; i < list.data.length; i++) {
+                result.push({vin: list.data[i].vin, data: []})
+            }
+            return result
+        }
+    }
+
+    async function getVinComparision(list) {
+        try {
+            console.log("getVinComparision" + JSON.stringify(list))
+            const response = await fetch(`${localhost}/vin/query`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(list)
+            });
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            const result = await response.json();
+            return result.data;
+        } catch (error) {
+            console.error(error);
+            result = []
+            for (let i = 0; i < list.data.length; i++) {
+                result.push({vin: list.data[i].vin, data: []})
+            }
+            return result
+        }
+    }
+
+    // 設定容器
+    function setPage(page) {
+        const table = document.getElementById("carTable");
+        const rowCount = table.rows.length;
+        for (let i = rowCount - 1; i > 0; i--) {
+            table.deleteRow(i);
+        }
+        
+        const tbody = carTable.querySelector("tbody");
+
+        for (let i = 0;i < resDataList.length; i++) {
+            tbody.appendChild(toRow(resDataList[i]));
+        }
+    }
+
+    //表格填入
+    function toRow(data) {
+        const row = document.createElement("tr");
+
+        const vinCell = document.createElement("td");
+        vinCell.textContent = data.VIN;
+        const makeCell = document.createElement("td");
+        makeCell.textContent = data.Make;
+        const modelCell = document.createElement("td");
+        modelCell.textContent = data.Model;
+        const seriesCell = document.createElement("td");
+        seriesCell.textContent = data.Series;
+        const series2Cell = document.createElement("td");
+        series2Cell.textContent = data.Series2;
+        const yearCell = document.createElement("td");
+        yearCell.textContent = data.ModelYear;
+        const percentCell = document.createElement("td");
+        let filterRes = filterOG(data)
+        if (filterRes === "NO") {
+            row.style.backgroundColor = "rgba(200, 100, 100, 0.1)";
+        } else {
+            percentCell.appendChild(filterRes);
+        }
+
+        row.appendChild(vinCell);
+        row.appendChild(makeCell);
+        row.appendChild(modelCell);
+        row.appendChild(seriesCell);
+        row.appendChild(series2Cell);
+        row.appendChild(yearCell);
+        row.appendChild(percentCell);
+        
+        row.style.marginTop = "5px";
+        row.style.marginBottom = "5px";
+        row.style.marginLeft = "10px";
+        row.style.marginRight = "10px";
+
+        return row
+    }
+    
+    // item是 US MMY
+    function filterOG(item) {
+    let data = []
+
+    console.log(item)
+
+    let dtComparision = vinComparisionList.find(dt => dt.vin_model.toLowerCase() === item.Model.toLowerCase() && item.Make.toLowerCase() === dt.make.toLowerCase());
+    if (dtComparision !== undefined) {
+      if (dtComparision.status === "specify") {
+        data = ogMmyList.filter(it => it.Model === dtComparision.og_model && it.Make.toLowerCase() === dtComparision.make.toLowerCase())
+      } else if (dtComparision.status === "specify_or") {
+        let element = dtComparision.og_model.split("||")
+        for (let i = 0;i < element.length;i++) {
+          data.push(...ogMmyList.filter(it => it.Model === element[i].trim() && it.Make.toLowerCase() === dtComparision.make.toLowerCase()))
+        }
+      } else {
+        data = undefined
+      } 
+    } else {
+      data = ogMmyList.filter(it => {
+      if (it.Make !== "" && it.Model !== "") {
+          let modelCheck = false
+          let selectMake = item.Make.toLowerCase()
+          let selectModel = item.Model.toLowerCase()
+
+          // 特殊車款處理，JS在 Fliter中可以修改值
+          // toyota / scion
+          if (selectMake === "toyota" && selectModel.toLowerCase().includes("scion")) {
+            selectMake = "scion"
+            selectModel = item.Model.split(" ")[1].trim().toLowerCase()
+          }
+          // Mercedes-Benz / AMG
+          if (selectMake === "mercedes-benz" && selectModel.toLowerCase().includes("amg")) {
+            selectMake = "mercedes-amg"
+            selectModel = item.Model.split(" ")[1].trim().toLowerCase()
+          }
+
+          // Method 1
+          var m1 = selectModel.split(/\s+|[\(\)\/-]/);
+          m1 = m1.filter(function(element) { return element !== ''; });
+          for (var z = 0; z < m1.length; z++) {
+            modelCheck |= it.Model.toLowerCase().includes(m1[z].toLowerCase())
+          }
+          // Method 2
+          var m2 = it.Model.split(/\s+|[\(\)\/-]/);
+          m2 = m2.filter(function(element) { return element !== ''; });
+          for (var z = 0; z < m2.length; z++) {
+            modelCheck |= selectModel.toLowerCase().includes(m2[z].toLowerCase())
+          }
+
+          return it.Make.toLowerCase().includes(selectMake) && modelCheck;
+        } else {
+          return false;
+        }
+      });
+    }
+
+    if (data === undefined || data.length === 0) {
+      return "NO"
+    } else {
+      return closest(data, item)
+    }
+  }
+
+  // 相似度最近的 (時間必判斷) (OG_MMY, US_API)
+  function closest(data, select) {
+    const table = document.createElement('table');
+    table.border = '1'; 
+
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    const headers = ['Make', 'Model', 'Year', 'Percent'];
+
+    headers.forEach(headerText => {
+        const th = document.createElement('th');
+        th.textContent = headerText;
+        headerRow.appendChild(th);
+    });
+
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    // 最終選項可能有多個(若最高百分比相同)
+    let maxValue = [] //{pr: 0, value: undefined}
+    for (let k = 0; k < data.length; k++) {
+        let item = {pr: 0, value: data[k]}
+        
+        if (vinComparisionList.find(dt => dt.vin_model.toLowerCase() === select.Model.toLowerCase() && select.Make.toLowerCase() === dt.make.toLowerCase()) !== undefined) {
+          item.pr = 100
+        } else {
+          item.pr = Math.max(levenshteinDistance(data[k].Model, select.Model, data[k].Make))
+        }
+        
+        if (displayRecent) {
+          if (item.pr === 0) continue;
+          if (maxValue.length === 0) {
+              maxValue.push(item)
+          } else if (item.pr > maxValue[0].pr) {
+              maxValue = []
+              maxValue.push(item)
+          } else if (item.pr === maxValue[0].pr) {
+              maxValue.push(item)
+          }
+        } else {
+          maxValue.push(item)
+        }
+    }
+
+    if (yearFilter && maxValue.length > 0) {
+      maxValue = maxValue.filter(it => { 
+        let start, end;
+        if (it.value.Year.includes("->")) {
+            const sp = it.value.Year.split("->");
+            start = (sp[0].replace(/[^0-9.]/g, '').substring(0, 4) || "0");
+            //end = (sp[1].replace(/[^0-9.]/g, '').substring(0, 4) || "9999");
+            end = 9999
+        } else if (it.value.Year.includes("-")) {
+            const sp = it.value.Year.split("-");
+            start = (sp[0].replace(/[^0-9.]/g, '').substring(0, 4) || "0");
+            end = (sp[1].replace(/[^0-9.]/g, '').substring(0, 4) || "9999");
+        } else {
+            start = it.value.Year;
+            end = it.value.Year;
+        }
+
+        return(select.ModelYear >= parseInt(start) && select.ModelYear <= parseInt(end));
+      });
+    }
+
+    for (let j = 0; j < maxValue.length; j++) {
+        const row2 = document.createElement('tr');
+
+        const makeCell = document.createElement('td');
+        makeCell.textContent = maxValue[j].value.Make;
+        const modelCell = document.createElement('td');
+        modelCell.textContent = maxValue[j].value.Model;
+        const yearCell = document.createElement('td');
+        yearCell.textContent = maxValue[j].value.Year;
+        const percentCell = document.createElement('td');
+        percentCell.textContent = maxValue[j].pr + "%";
+
+        row2.appendChild(makeCell);
+        row2.appendChild(modelCell);
+        row2.appendChild(yearCell);
+        row2.appendChild(percentCell);
+        tbody.appendChild(row2);
+    }
+    
+    table.appendChild(tbody);
+    return table
+  }
+
+    // 字串相似度百分比 t1=>OG_MMY,t2=>US_API
+    function levenshteinDistance(t1, t2, make) {
+      let str1 = t1.toLowerCase()
+      let str2 = t2.toLowerCase()
+      if (str1 === undefined || str1 === "") return 0
+      if (str2 === undefined || str2 === "") return 0
+
+      //以下兩個額外判斷可以刪除==========================================
+      //以 "空格" 切割後取締一個元素，默認空格格是第一位為主 model後面為類型?
+      if (make.toLowerCase() === "audi") {
+        //若以 "/" 分割者，默認式多個型號合併使用
+        if (str1.includes(str2.split(' ')[0]) && str1.includes("-")) return 100
+      } else if (make.toLowerCase() === "mercedes-amg" && str1.includes("gt")) {
+         return 100
+      }
+
+      // const result = str2.split(/[\/\s]+/);
+      // const filteredResult = result.filter(element => element !== '');
+      // for (let i = 0;i < filteredResult.length;i ++) {
+      //   if (str1.includes(filteredResult[i])) return 100
+      // }
+      //================================================================
+
+      const len1 = str1.length;
+      const len2 = str2.length;
+
+      const matrix = [];
+
+      // 初始化矩陣
+      for (let i = 0; i <= len1; i++) {
+          matrix[i] = [i];
+      }
+
+      for (let j = 0; j <= len2; j++) {
+          matrix[0][j] = j;
+      }
+
+      // 填充矩陣
+      for (let i = 1; i <= len1; i++) {
+          for (let j = 1; j <= len2; j++) {
+              const cost = str1.charAt(i - 1) === str2.charAt(j - 1) ? 0 : 1;
+              matrix[i][j] = Math.min(
+                  matrix[i - 1][j] + 1,      // 刪除
+                  matrix[i][j - 1] + 1,      // 插入
+                  matrix[i - 1][j - 1] + cost // 替換
+              );
+          }
+      }
+
+      const maxLen = Math.max(len1, len2);
+      const distance = matrix[len1][len2];
+      const similarityPercentage = ((maxLen - distance) / maxLen) * 100;
+
+      return similarityPercentage.toFixed(2);
+    }
+
+    function copyText() {
+        navigator.clipboard.writeText(document.getElementById("textArea").value)
+        .then(() => {
+            alert('Text copied!');
+        }).catch((err) => {
+            console.error('Unable to copy text', err);
+        });
+    }
+</script>
+</html>

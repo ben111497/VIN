@@ -17,7 +17,13 @@ EXPOSE 8081
 # 定義啟動指令
 CMD ["node", "sql.js"]
 
+### GCP
+# 生成本地鏡像
+# docker build -t asia.gcr.io/western-beanbag-404307/server .
+# 上傳 GCP
+# docker push asia.gcr.io/western-beanbag-404307/server
 
+#############################################
 # 生成鏡像
 # docker build -t #path .
 # docker build -t test-8086 .
@@ -34,3 +40,4 @@ CMD ["node", "sql.js"]
 # docker push yushulin/$repo
 
 # https://labs.play-with-docker.com/
+#############################################
