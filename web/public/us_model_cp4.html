@@ -130,6 +130,7 @@
   let dataList = [];
   let currentDataList = [];
   let ogMmyList = [];
+  let vinComparisionList = [];
   let currentPage = 1;
   let totalPages = 1;
   let dialog = document.querySelector("#dialog");
@@ -141,6 +142,8 @@
   /**
    * 獲取初始資料
    */
+
+  // US_MMY
   fetch('/public/us_mmy.json')
   .then(response => {
       if (!response.ok) {
@@ -158,6 +161,7 @@
   })
   .catch(error => console.error('Error:', error));
 
+// OG_MMY
   fetch('/public/og_mmy.json')
   .then(response => {
       if (!response.ok) {
@@ -171,6 +175,19 @@
   })
   .catch(error => console.error('Error:', error));
 
+// VIN_COMPARISION
+  fetch('/public/vin_comparision.json')
+  .then(response => {
+      if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      return response.json();
+  })
+  .then(data => {
+    vinComparisionList = data;
+    console.log(`vinComparisionList: ${JSON.stringify(vinComparisionList)}`)
+  })
+  .catch(error => console.error('Error:', error));
   /**
    * 設定監聽事件
    */
@@ -306,52 +323,50 @@
 
   function filterOG(index) {
     let item = currentDataList[index]
+    let data = []
+
     if (onlyTime && (item.Year === undefined || item.Year === "")) { return "NO" }
-    let data = ogMmyList.filter(it => {
-      if (it.Make !== "" && it.Model !== "") {
-        let modelCheck = false
 
-        // Method 1
-        var m1 = item.Model.split(/\s+|[\(\)\/-]/);
-        m1 = m1.filter(function(element) { return element !== ''; });
-        for (var z = 0; z < m1.length; z++) {
-          modelCheck |= it.Model.toLowerCase().includes(m1[z].toLowerCase())
+    let dtComparision = vinComparisionList.find(dt => dt.vin_model.toLowerCase() === item.Model.toLowerCase() && item.Make.toLowerCase() === dt.make.toLowerCase());
+    if (dtComparision !== undefined) {
+      console.log(`dtComparision: ${JSON.stringify(dtComparision)}`)
+      if (dtComparision.status === "specify") {
+        data = ogMmyList.filter(it => it.Model === dtComparision.og_model && it.Make.toLowerCase() === dtComparision.make.toLowerCase())
+      } else if (dtComparision.status === "specify_or") {
+        let element = dtComparision.og_model.split("||")
+        console.log(element)
+        for (let i = 0;i < element.length;i++) {
+          data.push(...ogMmyList.filter(it => it.Model === element[i].trim() && it.Make.toLowerCase() === dtComparision.make.toLowerCase()))
         }
-        // Method 2
-        var m2 = it.Model.split(/\s+|[\(\)\/-]/);
-        m2 = m2.filter(function(element) { return element !== ''; });
-        for (var z = 0; z < m2.length; z++) {
-          modelCheck |= item.Model.toLowerCase().includes(m2[z].toLowerCase())
-        }
-
-        return it.Make.toLowerCase() === item.Make.toLowerCase() && modelCheck;
       } else {
-        return false;
-      }
-    });
-  
-    if (yearFilter) {
-      data = data.filter(it => { 
-        let start, end;
-        if (it.Year.includes("->")) {
-            const sp = it.Year.split("->");
-            start = (sp[0].replace(/[^0-9.]/g, '').substring(0, 4) || "0");
-            //end = (sp[1].replace(/[^0-9.]/g, '').substring(0, 4) || "9999");
-            end = 9999
-        } else if (it.Year.includes("-")) {
-            const sp = it.Year.split("-");
-            start = (sp[0].replace(/[^0-9.]/g, '').substring(0, 4) || "0");
-            end = (sp[1].replace(/[^0-9.]/g, '').substring(0, 4) || "9999");
+        data = undefined
+      } 
+    } else {
+      data = ogMmyList.filter(it => {
+      if (it.Make !== "" && it.Model !== "") {
+          let modelCheck = false
+
+          // Method 1
+          var m1 = item.Model.split(/\s+|[\(\)\/-]/);
+          m1 = m1.filter(function(element) { return element !== ''; });
+          for (var z = 0; z < m1.length; z++) {
+            modelCheck |= it.Model.toLowerCase().includes(m1[z].toLowerCase())
+          }
+          // Method 2
+          var m2 = it.Model.split(/\s+|[\(\)\/-]/);
+          m2 = m2.filter(function(element) { return element !== ''; });
+          for (var z = 0; z < m2.length; z++) {
+            modelCheck |= item.Model.toLowerCase().includes(m2[z].toLowerCase())
+          }
+
+          return it.Make.toLowerCase().includes(item.Make.toLowerCase()) && modelCheck;
         } else {
-            start = it.Year;
-            end = it.Year;
+          return false;
         }
-      
-        return(item.Year >= parseInt(start) && item.Year <= parseInt(end));
       });
     }
 
-    if (data.length === 0) {
+    if (data === undefined || data.length === 0) {
       return "NO"
     } else {
       return closest(data, item)
@@ -382,8 +397,12 @@
     let maxValue = [] //{pr: 0, value: undefined}
     for (let k = 0; k < data.length; k++) {
         let item = {pr: 0, value: data[k]}
-        item.pr = Math.max(levenshteinDistance(data[k].Model, select.Model, data[k].Make))
-
+        if (vinComparisionList.find(dt => dt.vin_model.toLowerCase() === select.Model.toLowerCase() && select.Make.toLowerCase() === dt.make.toLowerCase()) !== undefined) {
+          item.pr = 100
+        } else {
+          item.pr = Math.max(levenshteinDistance(data[k].Model, select.Model, data[k].Make))
+        }
+        
         if (displayRecent) {
           if (item.pr === 0) continue;
           if (maxValue.length === 0) {
@@ -397,6 +416,27 @@
         } else {
           maxValue.push(item)
         }
+    }
+
+    if (yearFilter && maxValue.length > 0) {
+      maxValue = maxValue.filter(it => { 
+        let start, end;
+        if (it.value.Year.includes("->")) {
+            const sp = it.value.Year.split("->");
+            start = (sp[0].replace(/[^0-9.]/g, '').substring(0, 4) || "0");
+            //end = (sp[1].replace(/[^0-9.]/g, '').substring(0, 4) || "9999");
+            end = 9999
+        } else if (it.value.Year.includes("-")) {
+            const sp = it.value.Year.split("-");
+            start = (sp[0].replace(/[^0-9.]/g, '').substring(0, 4) || "0");
+            end = (sp[1].replace(/[^0-9.]/g, '').substring(0, 4) || "9999");
+        } else {
+            start = it.value.Year;
+            end = it.value.Year;
+        }
+      
+        return(select.Year >= parseInt(start) && select.Year <= parseInt(end));
+      });
     }
 
     for (let j = 0; j < maxValue.length; j++) {

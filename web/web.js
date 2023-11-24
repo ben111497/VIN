@@ -132,7 +132,6 @@ app.get('/home', (req, res) => {
             <button onclick="window.location.href='/us_mmy_cp'">US_MMY (Method 1)</button>
             <button onclick="window.location.href='/us_mmy_cp2'">US_MMY (Method 2)</button>
             <button onclick="window.location.href='/us_mmy_cp4'">US_MMY (Method 4)</button>
-            <button onclick="window.location.href='/us_mmy_cp5'">驗證資料正確性用</button>
           </div>
 
           <div class="title"><h3>Data Table</h3></div>
