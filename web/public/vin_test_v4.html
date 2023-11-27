@@ -74,13 +74,6 @@
             <input type="checkbox" id="yearFilter" name="yearFilter" checked>
             時間過濾
           </label>
-
-          <br>
-
-          <label>
-            <input type="checkbox" id="seriesFilter" name="seriesFilter">
-            Series and Series2 比對
-          </label>
         </form>
       </div>
     
@@ -112,7 +105,6 @@
     let VINList = []
     let displayRecent = true
     let yearFilter = true
-    let seriesFilter = false
     const pageDataCount = 100;
     let ogMmyList = [];
     let vinComparisionList = [];
@@ -234,69 +226,6 @@
         }
         setPage(0)
     }, 500));
-
-    document.getElementById("seriesFilter").addEventListener("click", debounce(function() {
-        let e = document.getElementById("seriesFilter")
-        if (seriesFilter) {
-            seriesFilter = false
-        } else {
-            seriesFilter = true
-        }
-        setPage(0)
-    }, 500));
-
-    // 字串相似度百分比
-    function levenshteinDistance(t1, t2, make) {
-        let str1 = t1.toLowerCase()
-        let str2 = t2.toLowerCase()
-        if (str1 === undefined || str1 === "") return 0
-        if (str2 === undefined || str2 === "") return 0
-
-        //以下兩個額外判斷可以刪除==========================================
-        //以 "空格" 切割後取締一個元素，默認空格格是第一位為主 model後面為類型?
-        if (make.toLowerCase() === "audi") {
-            if (str1.includes(str2.split(' ')[0]) && str1.includes("-")) return 100
-        }
-        //若以 "/" 分割者，默認式多個型號合併使用
-        // const result = str2.split(/[\/\s]+/);
-        // const filteredResult = result.filter(element => element !== '');
-        // for (let i = 0;i < filteredResult.length;i ++) {
-        //   if (str1.includes(filteredResult[i])) return 100
-        // }
-        //================================================================
-
-        const len1 = str1.length;
-        const len2 = str2.length;
-
-        const matrix = [];
-
-        // 初始化矩陣
-        for (let i = 0; i <= len1; i++) {
-            matrix[i] = [i];
-        }
-
-        for (let j = 0; j <= len2; j++) {
-            matrix[0][j] = j;
-        }
-
-        // 填充矩陣
-        for (let i = 1; i <= len1; i++) {
-            for (let j = 1; j <= len2; j++) {
-                const cost = str1.charAt(i - 1) === str2.charAt(j - 1) ? 0 : 1;
-                matrix[i][j] = Math.min(
-                    matrix[i - 1][j] + 1,      // 刪除
-                    matrix[i][j - 1] + 1,      // 插入
-                    matrix[i - 1][j - 1] + cost // 替換
-                );
-            }
-        }
-
-        const maxLen = Math.max(len1, len2);
-        const distance = matrix[len1][len2];
-        const similarityPercentage = ((maxLen - distance) / maxLen) * 100;
-
-        return similarityPercentage.toFixed(2);
-    }
 
     // 輸入資料處理成 US VIN API需要格式
     function dataProcess(inputString) {
@@ -454,8 +383,6 @@
     function filterOG(item) {
     let data = []
 
-    console.log(item)
-
     let dtComparision = vinComparisionList.find(dt => dt.vin_model.toLowerCase() === item.Model.toLowerCase() && item.Make.toLowerCase() === dt.make.toLowerCase());
     if (dtComparision !== undefined) {
       if (dtComparision.status === "specify") {
@@ -536,9 +463,10 @@
 
     // 最終選項可能有多個(若最高百分比相同)
     let maxValue = [] //{pr: 0, value: undefined}
+
     for (let k = 0; k < data.length; k++) {
         let item = {pr: 0, value: data[k]}
-        
+
         if (vinComparisionList.find(dt => dt.vin_model.toLowerCase() === select.Model.toLowerCase() && select.Make.toLowerCase() === dt.make.toLowerCase()) !== undefined) {
           item.pr = 100
         } else {
@@ -606,8 +534,8 @@
 
     // 字串相似度百分比 t1=>OG_MMY,t2=>US_API
     function levenshteinDistance(t1, t2, make) {
-      let str1 = t1.toLowerCase()
-      let str2 = t2.toLowerCase()
+      let str1 = t1.toLowerCase().replace("scion", "")
+      let str2 = t2.toLowerCase().replace("scion", "")
       if (str1 === undefined || str1 === "") return 0
       if (str2 === undefined || str2 === "") return 0
 

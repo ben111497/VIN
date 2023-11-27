@@ -16,6 +16,8 @@ EXPOSE 8082
 # 定義啟動指令
 CMD ["node", "web.js"]
 
+# docker build -t asia.gcr.io/vinweb-404307/web:latest .
+# docker push asia.gcr.io/vinweb-404307/web
 
 # 生成鏡像
 # docker build -t #path .
